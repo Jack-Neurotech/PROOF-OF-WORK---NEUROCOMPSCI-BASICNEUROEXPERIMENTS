@@ -1,0 +1,227 @@
+"""Experiment 003: dynamic synaptic weight changes under changing activity."""
+
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+from Stdp_models import STDPParameters, weight_change
+
+
+def run_dynamic_experiment(
+    delta_t_sequence_ms: np.ndarray,
+    initial_weight: float,
+    parameters: STDPParameters,
+    weight_min: float,
+    weight_max: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Apply a changing sequence of spike-timing differences."""
+
+    if not weight_min <= initial_weight <= weight_max:
+        raise ValueError("Initial weight must be within the weight bounds.")
+
+    pairings = len(delta_t_sequence_ms)
+
+    weights = np.empty(pairings + 1)
+    changes = np.empty(pairings)
+
+    weights[0] = initial_weight
+
+    for pairing, delta_t_ms in enumerate(delta_t_sequence_ms):
+        delta_w = weight_change(float(delta_t_ms), parameters)
+
+        proposed_weight = weights[pairing] + delta_w
+
+        new_weight = np.clip(
+            proposed_weight,
+            weight_min,
+            weight_max,
+        )
+
+        changes[pairing] = new_weight - weights[pairing]
+        weights[pairing + 1] = new_weight
+
+    return weights, changes
+
+
+def build_activity_sequence() -> np.ndarray:
+    """Create a controlled sequence of changing spike-timing conditions."""
+
+    causal = np.full(30, 10.0)
+    anti_causal = np.full(30, -10.0)
+    strong_causal = np.full(30, 5.0)
+    strong_anti_causal = np.full(30, -5.0)
+
+    rng = np.random.default_rng(337)
+    random_timing = rng.uniform(-30.0, 30.0, 30)
+
+    return np.concatenate(
+        [
+            causal,
+            anti_causal,
+            strong_causal,
+            strong_anti_causal,
+            random_timing,
+        ]
+    )
+
+
+def main() -> None:
+    parameters = STDPParameters()
+
+    initial_weight = 0.5
+    weight_min = 0.0
+    weight_max = 1.0
+
+    delta_t_sequence_ms = build_activity_sequence()
+
+    weights, changes = run_dynamic_experiment(
+        delta_t_sequence_ms=delta_t_sequence_ms,
+        initial_weight=initial_weight,
+        parameters=parameters,
+        weight_min=weight_min,
+        weight_max=weight_max,
+    )
+
+    data_dir = Path("results/data")
+    figure_dir = Path("results/figures")
+
+    data_dir.mkdir(parents=True, exist_ok=True)
+    figure_dir.mkdir(parents=True, exist_ok=True)
+
+    pairing = np.arange(len(delta_t_sequence_ms))
+
+    data = np.column_stack(
+        (
+            pairing,
+            delta_t_sequence_ms,
+            changes,
+            weights[1:],
+        )
+    )
+
+    np.savetxt(
+        data_dir / "experiment_003_weight_dynamics.csv",
+        data,
+        delimiter=",",
+        header="pairing,delta_t_ms,delta_w,weight",
+        comments="",
+        fmt=["%d", "%.6f", "%.9f", "%.9f"],
+    )
+
+    # Weight trajectory.
+    figure, axis = plt.subplots(figsize=(10, 5))
+
+    axis.plot(
+        np.arange(len(weights)),
+        weights,
+        linewidth=2,
+    )
+
+    axis.axhline(
+        initial_weight,
+        linewidth=1,
+        label="Initial weight",
+    )
+
+    axis.axhline(weight_min, linewidth=1)
+    axis.axhline(weight_max, linewidth=1)
+
+    axis.set_xlabel("Pairing number")
+    axis.set_ylabel("Synaptic weight w")
+    axis.set_title("Experiment 003 — Synaptic Weight Dynamics")
+    axis.set_ylim(-0.05, 1.05)
+    axis.grid(True, alpha=0.25)
+    axis.legend()
+
+    figure.tight_layout()
+
+    figure.savefig(
+        figure_dir / "experiment_003_weight_dynamics.png",
+        dpi=300,
+    )
+
+    plt.close(figure)
+
+    # Spike-timing sequence.
+    figure, axis = plt.subplots(figsize=(10, 4))
+
+    axis.plot(
+        pairing,
+        delta_t_sequence_ms,
+        linewidth=1.5,
+    )
+
+    axis.axhline(0.0, linewidth=1)
+
+    axis.set_xlabel("Pairing number")
+    axis.set_ylabel("Δt (ms)")
+    axis.set_title("Experiment 003 — Spike-Timing Sequence")
+    axis.grid(True, alpha=0.25)
+
+    figure.tight_layout()
+
+    figure.savefig(
+        figure_dir / "experiment_003_timing_sequence.png",
+        dpi=300,
+    )
+
+    plt.close(figure)
+
+    print("STDP EXPERIMENT 003")
+    print("=" * 60)
+    print(f"Initial weight: {initial_weight:.3f}")
+    print(f"Weight bounds:  {weight_min:.1f} to {weight_max:.1f}")
+    print(f"Total pairings: {len(delta_t_sequence_ms)}")
+    print()
+
+    print("PHASE RESULTS")
+    print("-" * 60)
+
+    phase_names = [
+        ("Causal +10 ms", 0, 30),
+        ("Anti-causal -10 ms", 30, 60),
+        ("Causal +5 ms", 60, 90),
+        ("Anti-causal -5 ms", 90, 120),
+        ("Random timing", 120, 150),
+    ]
+
+    for name, start, end in phase_names:
+        phase_start_weight = weights[start]
+        phase_end_weight = weights[end]
+
+        print(name)
+        print(f"  Start weight: {phase_start_weight:.6f}")
+        print(f"  End weight:   {phase_end_weight:.6f}")
+        print(
+            f"  Net change:   "
+            f"{phase_end_weight - phase_start_weight:+.6f}"
+        )
+        print()
+
+    print("FINAL RESULT")
+    print("-" * 60)
+    print(f"Final weight: {weights[-1]:.6f}")
+    print(f"Maximum weight: {weights.max():.6f}")
+    print(f"Minimum weight: {weights.min():.6f}")
+
+    if np.all(weights >= weight_min) and np.all(weights <= weight_max):
+        print("Weight bounds: PASS")
+    else:
+        print("Weight bounds: FAIL")
+        raise SystemExit(1)
+
+    print()
+    print("DATA:", data_dir / "experiment_003_weight_dynamics.csv")
+    print(
+        "FIGURE:",
+        figure_dir / "experiment_003_weight_dynamics.png",
+    )
+    print(
+        "TIMING:",
+        figure_dir / "experiment_003_timing_sequence.png",
+    )
+
+
+if __name__ == "__main__":
+    main()
