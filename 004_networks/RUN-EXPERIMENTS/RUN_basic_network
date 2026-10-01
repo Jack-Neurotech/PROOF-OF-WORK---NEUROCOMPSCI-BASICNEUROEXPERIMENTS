@@ -1,0 +1,3 @@
+cd ~/eeg-pipeline-rebuild/COMPSCI/NEURON\ VOLTAGE\ SIMULTION/experiments/004_networks
+source .venv/bin/activate
+python3 basic_network.py
