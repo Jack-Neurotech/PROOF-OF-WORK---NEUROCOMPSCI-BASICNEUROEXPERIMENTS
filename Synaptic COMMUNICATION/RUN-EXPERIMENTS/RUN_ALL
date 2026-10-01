@@ -1,0 +1,8 @@
+cd ~/eeg-pipeline-rebuild/COMPSCI/Synaptic\ COMMUNICATION
+source venv/bin/activate
+python3 Experiment_001
+python3 Experiment_002
+python3 Experiment_003
+python3 experiment_004
+python3 Experiment_005
+python3 experiment_006
